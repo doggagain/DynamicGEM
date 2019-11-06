@@ -17,7 +17,7 @@ from dynamicgem.evaluation import evaluate_link_prediction
 from keras.layers import Input, Dense, Lambda, merge, Subtract
 from keras.models import Model, model_from_json
 from keras.optimizers import SGD, Adam
-from keras.callbacks import TensorBoard, EarlyStopping
+from keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from keras import backend as KBack
 from .dnn_utils import *
 import tensorflow as tf
@@ -156,14 +156,20 @@ class DynAERNN(DynamicGraphEmbedding):
             )
 
         # Model
+
         self._model = Model(input=[x_in, x_pred], output=x_diff)
-        sgd = SGD(lr=self._xeta, decay=1e-5, momentum=0.99, nesterov=True)
+        #sgd = SGD(lr=self._xeta, decay=1e-5, momentum=0.99, nesterov=True)
         adam = Adam(lr=self._xeta, beta_1=0.9, beta_2=0.999, epsilon=1e-08)
         # self._model.compile(optimizer=sgd, loss=weighted_mse_x)
         self._model.compile(optimizer=adam, loss=weighted_mse_x)
 
         # tensorboard = TensorBoard(log_dir="logs/{}".format(time()))
-        early_stop = EarlyStopping(monitor='val_loss', patience=10, verbose=1)
+        
+        
+        early_stop = EarlyStopping(monitor='loss', min_delta=0, patience=5, verbose=2, mode='auto')
+        checkpointer = ModelCheckpoint(filepath = 'model_zero7.{epoch:02d}-{val_loss:.6f}.hdf5', verbose=1, save_best_only=True, save_weights_only = True)
+        reduce_lr = ReduceLROnPlateau(monitor='loss', factor=0.2, patience=2, min_lr=0.000001, verbose=2)
+
         history = self._model.fit_generator(
             generator=batch_generator_dynaernn(
                 graphs,
@@ -176,11 +182,11 @@ class DynAERNN(DynamicGraphEmbedding):
             samples_per_epoch=(
                                       graphs[0].number_of_nodes() * self._n_prev_graphs
                               ) // self._n_batch,
-            verbose=1
-            # callbacks=[tensorboard]
+            verbose=2
+            callbacks=[early_stop,checkpointer,reduce_lr]
         )
         loss = history.history['loss']
-        # Get embedding for all points
+        Get embedding for all points
         if loss[0] == np.inf or np.isnan(loss[0]):
             print('Model diverged. Assigning random embeddings')
             self._Y = np.random.randn(self._node_num, self._d)
@@ -216,7 +222,7 @@ class DynAERNN(DynamicGraphEmbedding):
             # np.savetxt('next_pred_' + self._savefilesuffix + '.txt',
             #            self._next_adj)
         # sess.close()
-        return self._Y, (t2 - t1)
+        return self._Y, (t2 - t1),loss
 
     def get_embeddings(self):
         return self._Y
