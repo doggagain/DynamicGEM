@@ -182,11 +182,12 @@ class DynAERNN(DynamicGraphEmbedding):
             samples_per_epoch=(
                                       graphs[0].number_of_nodes() * self._n_prev_graphs
                               ) // self._n_batch,
-            verbose=2
+            verbose=2,
             callbacks=[early_stop,checkpointer,reduce_lr]
         )
+        
         loss = history.history['loss']
-        Get embedding for all points
+        # Get embedding for all points
         if loss[0] == np.inf or np.isnan(loss[0]):
             print('Model diverged. Assigning random embeddings')
             self._Y = np.random.randn(self._node_num, self._d)
